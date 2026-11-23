@@ -280,6 +280,12 @@ async def simulate_token_expire():
     }
 
 
+@router.get("/api/debug/auth_status")
+async def auth_status():
+    """查看脱敏后的小米登录状态，用于排查连接不稳定问题。"""
+    return xiaomusic.auth_manager.get_auth_status()
+
+
 @router.get("/latestversion")
 async def latest_version():
     """获取最新版本"""

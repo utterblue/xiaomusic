@@ -1,13 +1,11 @@
 # XiaoMusic: 无限听歌，解放小爱音箱
 
-> [!IMPORTANT]
-> **📢 项目停止维护通知**
+> [!NOTE]
+> **🔧 继续维护分支**
 >
-> 因个人精力有限，需将重心转移到其他项目，本项目将停止维护，不再接受新功能开发与 bug 修复，已有 issue 与 PR 也不再处理。
->
-> 后续推荐使用社区接力项目：**[songloft-org/songloft](https://github.com/songloft-org/songloft)**，欢迎大家迁移、参与共建。
->
-> 衷心感谢一路以来所有用户的支持与陪伴 ❤️
+> 本仓库从 `hanxi/xiaomusic` fork，上游已停止更新，这里继续维护并修复影响使用的问题。
+> 当前版本重点修复了小米登录态容易失效的情况（连接几分钟后设备消失、TTS/控制触发后掉线），
+> 并补充了用于 NAS/Docker 排查的登录状态接口。
 
 [![GitHub License](https://img.shields.io/github/license/hanxi/xiaomusic)](https://github.com/hanxi/xiaomusic)
 [![Docker Image Version](https://img.shields.io/docker/v/hanxi/xiaomusic?sort=semver&label=docker%20image)](https://hub.docker.com/r/hanxi/xiaomusic)
@@ -110,6 +108,27 @@ docker run -p 58090:8090 -v /xiaomusic_music:/app/music -v /xiaomusic_conf:/app/
 
 > [!NOTE]
 > docker 和 docker compose 二选一即可，启动成功后，在 web 页面可以配置其他参数，带有 `*` 号的配置是必须要配置的，其他的用不上时不用修改。初次配置时需要在页面上输入小米账号和密码保存后才能获取到设备列表。
+
+### 🛠️ 飞牛 OS / NAS 上的登录稳定性
+
+本分支针对“有时连不上、连上几分钟就掉线”做了以下修复：
+
+- 小米复用 passToken 登录时不再因响应缺少字段而清空 `.mi.token`；
+- 启动时提前准备 `micoapi` 与 `xiaomiio` 两套服务票据，避免 TTS 等操作触发隐式登录失败；
+- `serviceToken` 失效时按服务精确刷新，不再把账号整体踢下线；
+- 对话轮询不再复用共享 CookieJar，避免旧票据造成持续 400/401。
+
+飞牛 OS 上建议把容器接入与宿主同一局域网，并关闭代理；如使用 bridge 模式仍不稳定，可改为 `network_mode: host`（此时删除 ports 映射，并确认 8090 端口未被占用）。
+
+排查登录状态可以访问：
+
+```bash
+curl http://NAS_IP:58090/api/debug/auth_status
+```
+
+返回结果中的 `has_micoapi_token` / `has_xiaomiio_token` 为 `true` 且 `last_login_ok` 为 `true` 时，登录态正常。日志里搜索 `[AUTH]` 与 `[MI-AUTH]` 可以看到登录和票据刷新的原因。
+
+升级时保留 `/app/conf` 卷不变（里面有 `.mi.token` 和 `auth.json`），替换镜像后无需重新扫码；如仍无法恢复，可在 web 设置页重新保存账号密码或重新扫码登录。
 
 遇到问题可以去 web 设置页面底部点击【下载日志文件】按钮，然后搜索一下日志文件内容确保里面没有账号密码信息后(有就删除这些敏感信息)，然后在提 issues 反馈问题时把下载的日志文件带上。
 

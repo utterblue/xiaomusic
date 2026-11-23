@@ -13,10 +13,17 @@ import os
 import time
 
 from aiohttp import ClientSession
-from miservice import MiAccount, MiIOService, MiNAService
+from miservice import MiIOService, MiNAService
 
 from xiaomusic.config import Device
 from xiaomusic.const import COOKIE_TEMPLATE
+from xiaomusic.mi_account import (
+    SERVICE_MICOAPI,
+    SERVICE_XIAOMIIO,
+    RobustMiAccount,
+    build_token,
+    get_service_token,
+)
 from xiaomusic.utils.system_utils import (
     get_random,
     parse_cookie_string,
@@ -160,11 +167,13 @@ class AuthManager:
             f"[AUTH-LOGIN] 开始登录, account={self.config.account or '(空/扫码登录)'}"
         )
         try:
-            mi_account = MiAccount(
+            mi_account = RobustMiAccount(
                 self.mi_session,
                 self.config.account,
                 self.config.password,
                 str(self.mi_token_home),
+                token_provider=self._load_token_file,
+                log=self.log,
             )
 
             self.set_token(mi_account)
@@ -203,6 +212,15 @@ class AuthManager:
                         "建议重新扫码登录或检查网络"
                     )
                     return False
+
+            # 提前准备 MiIOService 使用的 xiaomiio 票据。否则第一次 TTS/控制
+            # 会在运行时触发隐式登录，失败时连带清空 micoapi 票据导致掉线。
+            miio_ok = await mi_account.login(SERVICE_XIAOMIIO)
+            if not miio_ok:
+                self.log.warning(
+                    "[AUTH-LOGIN] xiaomiio 票据获取失败，MiIOService 相关功能"
+                    "（部分型号 TTS）暂不可用；不影响播放与语音控制"
+                )
 
             self._consecutive_failures = 0
             self.mina_service = MiNAService(mi_account)
@@ -249,11 +267,13 @@ class AuthManager:
             old_session = self.mi_session
             new_session = ClientSession()
 
-            new_account = MiAccount(
+            new_account = RobustMiAccount(
                 new_session,
                 self.config.account,
                 self.config.password,
                 str(self.mi_token_home),
+                token_provider=self._load_token_file,
+                log=self.log,
             )
             self.set_token(new_account)
 
@@ -270,6 +290,7 @@ class AuthManager:
 
             if result:
                 self.log.info("[AUTH-FRESH] 替换为新 session 和 account")
+                await new_account.login(SERVICE_XIAOMIIO)
                 await old_session.close()
                 self.mi_session = new_session
                 self.mina_service = MiNAService(new_account)
@@ -303,7 +324,7 @@ class AuthManager:
                 error_msg = str(exc)
                 auth_manager.log.warning(
                     f"[PATCH-mi_request] mi_request 失败: {error_msg}, "
-                    f"尝试从 auth.json 恢复 passToken 后重试..."
+                    "尝试恢复本地凭据并刷新服务票据后重试..."
                 )
 
                 mi_account.session.cookie_jar.clear()
@@ -312,7 +333,7 @@ class AuthManager:
                 auth_manager.set_token(mi_account)
                 if mi_account.token and "passToken" in mi_account.token:
                     try:
-                        login_ok = await mi_account.login(sid)
+                        login_ok = await mi_account.login(sid, force_refresh=True)
                         if login_ok:
                             auth_manager.log.info(
                                 "[PATCH-mi_request] 恢复 passToken 后重新登录成功，重试原始请求"
@@ -365,36 +386,56 @@ class AuthManager:
             return {}
 
     def set_token(self, account):
+        """合并 auth.json / cookie / .mi.token，恢复全部可用的服务票据。"""
         auth_path = os.path.join(self.config.conf_path, "auth.json")
+        existing = self._load_token_file()
+        auth_data = None
+        cookie_data = None
+
         if os.path.isfile(auth_path):
             try:
                 with open(auth_path, encoding="utf-8") as f:
-                    user_data = json.loads(f.read())
-                    self.device_id = user_data["deviceId"]
-                    account.token = {
-                        "passToken": user_data["passToken"],
-                        "userId": user_data["userId"],
-                        "deviceId": self.device_id,
-                    }
-                    self.log.debug(
-                        f"[AUTH-set_token] 从 auth.json 加载 token, "
-                        f"userId={user_data.get('userId')}, "
-                        f"deviceId={self.device_id}"
-                    )
+                    auth_data = json.loads(f.read())
+                self.device_id = auth_data.get("deviceId") or self.device_id
+                self.log.debug(
+                    "[AUTH-set_token] 从 auth.json 加载 token, "
+                    f"userId={auth_data.get('userId')}, deviceId={self.device_id}"
+                )
             except Exception as e:
                 self.log.error(f"[AUTH-set_token] 读取 auth.json 失败: {e}")
         elif self.config.cookie:
-            cookies_dict = parse_cookie_string_to_dict(self.config.cookie)
-            account.token = {
-                "passToken": cookies_dict["passToken"],
-                "userId": cookies_dict["userId"],
-                "deviceId": self.device_id,
-            }
+            cookie_data = parse_cookie_string_to_dict(self.config.cookie)
             self.log.debug("[AUTH-set_token] 从 cookie 配置加载 token")
+
+        token = build_token(
+            auth_data,
+            existing=existing,
+            cookie_data=cookie_data,
+            device_id=self.device_id,
+        )
+        if token:
+            account.token = token
+            self.log.info(
+                "[AUTH-set_token] 已恢复凭据, "
+                f"micoapi票据={bool(get_service_token(token, SERVICE_MICOAPI))}, "
+                f"xiaomiio票据={bool(get_service_token(token, SERVICE_XIAOMIIO))}"
+            )
         else:
             self.log.warning(
-                "[AUTH-set_token] 无 auth.json 且无 cookie 配置，无法设置 token"
+                "[AUTH-set_token] 无 auth.json/cookie/.mi.token 可用，等待账号密码登录"
             )
+
+    def _load_token_file(self):
+        """读取 .mi.token，失败时返回 None（绝不删除文件）。"""
+        if not os.path.isfile(self.mi_token_home):
+            return None
+        try:
+            with open(self.mi_token_home, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            self.log.warning(f"[AUTH] 读取 {self.mi_token_home} 失败: {e}")
+            return None
 
     def get_cookie(self):
         if self.config.cookie:
@@ -409,16 +450,14 @@ class AuthManager:
             return None
 
         try:
-            with open(self.mi_token_home, encoding="utf-8") as f:
-                user_data = json.loads(f.read())
+            user_data = self._load_token_file()
+            if not user_data:
+                raise ValueError(".mi.token 为空或格式错误")
             self.log.info("[AUTH-get_cookie] .mi.token 文件加载成功")
-            user_id = user_data.get("userId")
-            service_token = user_data.get("micoapi")[1]
-            device_id = self.config.get_one_device_id()
-            cookie_string = COOKIE_TEMPLATE.format(
-                device_id=device_id, service_token=service_token, user_id=user_id
-            )
-            return parse_cookie_string(cookie_string)
+            cookie_jar = self._build_polling_cookie(user_data)
+            if cookie_jar:
+                return cookie_jar
+            return self._get_cookie_from_session()
         except Exception as e:
             self.log.warning(f"[AUTH-get_cookie] 读取 .mi.token 失败: {e}")
             cookie_jar = self._get_cookie_from_session()
@@ -426,27 +465,89 @@ class AuthManager:
                 return cookie_jar
             return None
 
+    def _build_polling_cookie(self, token_data):
+        """从任意 token 数据源构造对话轮询所需的 cookie jar。"""
+        user_id = token_data.get("userId")
+        service_token = get_service_token(token_data, SERVICE_MICOAPI) or token_data.get(
+            "serviceToken", ""
+        )
+        if not service_token:
+            return None
+        device_id = self.config.get_one_device_id() or token_data.get("deviceId", "")
+        if not user_id or not device_id:
+            return None
+        return parse_cookie_string(
+            COOKIE_TEMPLATE.format(
+                device_id=device_id, service_token=service_token, user_id=user_id
+            )
+        )
+
+    def get_polling_cookies(self, device_id):
+        """每次轮询都重新生成 cookie，避免复用过期的共享 CookieJar。
+
+        aiohttp 的 CookieJar 是有状态的，旧代码直接替换 session 的私有属性，
+        在登录态刷新后仍会带上旧的 serviceToken，造成持续的 400/401。
+        """
+        token_data = None
+        if self.mina_service and self.mina_service.account:
+            token_data = self.mina_service.account.token
+        if not token_data or not (
+            get_service_token(token_data, SERVICE_MICOAPI)
+            or token_data.get("serviceToken")
+        ):
+            token_data = self._load_token_file()
+        if not token_data and self.config.cookie:
+            token_data = parse_cookie_string_to_dict(self.config.cookie)
+        if not token_data:
+            return None
+
+        user_id = token_data.get("userId")
+        service_token = get_service_token(token_data, SERVICE_MICOAPI) or token_data.get(
+            "serviceToken", ""
+        )
+        cookies = {"deviceId": device_id or self.config.get_one_device_id() or ""}
+        if user_id:
+            cookies["userId"] = user_id
+        if service_token:
+            cookies["serviceToken"] = service_token
+        return cookies
+
     def _get_cookie_from_session(self):
         if self.mina_service is None:
             return None
         account = self.mina_service.account
         if not account or not account.token:
             return None
-        token = account.token
-        micoapi_data = token.get("micoapi")
-        if not micoapi_data or len(micoapi_data) < 2:
-            self.log.warning("[AUTH-get_cookie] 内存 token 中缺少 micoapi 数据")
-            return None
-        user_id = token.get("userId")
-        service_token = micoapi_data[1]
-        device_id = self.config.get_one_device_id()
-        if not user_id or not service_token:
-            self.log.warning(
-                "[AUTH-get_cookie] 内存 token 中缺少 userId 或 serviceToken"
-            )
-            return None
-        self.log.info("[AUTH-get_cookie] 从内存 token 降级获取 cookie")
-        cookie_string = COOKIE_TEMPLATE.format(
-            device_id=device_id, service_token=service_token, user_id=user_id
+        cookie_jar = self._build_polling_cookie(account.token)
+        if cookie_jar:
+            self.log.info("[AUTH-get_cookie] 从内存 token 降级获取 cookie")
+        return cookie_jar
+
+    def get_auth_status(self):
+        """供诊断接口使用的脱敏登录状态。"""
+        token_data = None
+        if self.mina_service and self.mina_service.account:
+            account = self.mina_service.account
+            token_data = account.token
+            status = account.status() if hasattr(account, "status") else {}
+        else:
+            token_data = self._load_token_file()
+            status = {}
+        token_data = token_data or {}
+        status.update(
+            {
+                "has_pass_token": bool(token_data.get("passToken")),
+                "user_id": token_data.get("userId"),
+                "device_id": token_data.get("deviceId"),
+                "has_micoapi_token": bool(
+                    get_service_token(token_data, SERVICE_MICOAPI)
+                ),
+                "has_xiaomiio_token": bool(
+                    get_service_token(token_data, SERVICE_XIAOMIIO)
+                ),
+                "last_login_ok": self._last_login_ok,
+                "consecutive_failures": self._consecutive_failures,
+                "token_file_exists": os.path.isfile(self.mi_token_home),
+            }
         )
-        return parse_cookie_string(cookie_string)
+        return status

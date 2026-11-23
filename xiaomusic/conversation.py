@@ -117,9 +117,8 @@ class ConversationPoller:
                 self.log.debug(
                     f"Listening new message, timestamp: {self.last_timestamp}"
                 )
-                # 动态获取最新的 cookie_jar
-                if self.auth_manager.cookie_jar is not None:
-                    session._cookie_jar = self.auth_manager.cookie_jar
+                # 登录态可能在运行中刷新，cookie 在每次请求时重新生成，
+                # 不再复用共享 CookieJar（避免旧 serviceToken 造成持续 400）。
 
                 # 拉取所有音箱的对话记录
                 tasks = []
@@ -155,10 +154,15 @@ class ConversationPoller:
             raise
 
     async def get_latest_ask_from_xiaoai(self, session, device_id):
-        cookies = {"deviceId": device_id}
         retries = 3
+        cookies = self.auth_manager.get_polling_cookies(device_id)
+        if not cookies:
+            self.log.warning("缺少有效的 serviceToken，跳过对话轮询")
+            return
         for i in range(retries):
             try:
+                # 每次重试都取最新登录态，刷新后不再携带旧 serviceToken
+                cookies = self.auth_manager.get_polling_cookies(device_id) or cookies
                 timeout = ClientTimeout(total=15)
                 hardware = self.device_manager.get_hardward(device_id)
                 url = LATEST_ASK_API.format(
@@ -169,8 +173,8 @@ class ConversationPoller:
 
                 if r.status != 200:
                     self.log.warning(f"Request failed with status {r.status}")
-                    if i == 2 and r.status == 401:
-                        await self._try_reinit("401错误")
+                    if i == 2 and r.status in (400, 401, 403):
+                        await self._try_reinit(f"HTTP {r.status}")
                     continue
 
             except asyncio.CancelledError:

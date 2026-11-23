@@ -1,6 +1,6 @@
 [project]
 name = "xiaomusic"
-version = "0.6.1"
+version = "0.6.2"
 description = "Play Music with xiaomi AI speaker"
 authors = [
 {name = "涵曦", email = "im.hanxi@gmail.com"},
@@ -23,7 +23,8 @@ dependencies = [
     "sentry-sdk[fastapi]==1.45.1",
     "pyjwt>=2.10.1",
     "fake-useragent>=2.2.0",
-    "miservice-fork",
+    # 认证层依赖 miservice 的内部协议细节，锁定已验证版本避免升级后行为变化
+    "miservice-fork==2.9.3",
     "edge-tts>=7.2.3",
     "psutil>=5.9.0",
     "pycryptodome>=3.23.0",

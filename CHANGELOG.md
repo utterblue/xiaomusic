@@ -1,3 +1,13 @@
+## v0.6.2 (2026-11-23)
+
+### Fix
+
+- 修复复用 passToken 登录时小米响应缺少字段导致 `.mi.token` 被删除、账号几分钟后掉线的问题
+- 启动时预取 `xiaomiio` 服务票据，避免 TTS/设备控制触发隐式登录失败并连带掉线
+- serviceToken 失效时按 sid 精确刷新，不再清空整个登录态
+- 对话轮询改为每次请求生成新 cookie，避免旧 serviceToken 造成持续 400/401
+- 新增 `/api/debug/auth_status` 诊断接口，锁定 miservice-fork 依赖版本
+
 ## v0.6.1 (2026-06-09)
 
 ### Feat
