@@ -14,6 +14,10 @@ from xiaomusic.const import (
     PLAY_TYPE_SEQ,
     PLAY_TYPE_SIN,
 )
+from xiaomusic.utils.playback_utils import (
+    normalize_base_url,
+    resolve_playback_host,
+)
 from xiaomusic.utils.system_utils import validate_proxy
 
 
@@ -98,7 +102,8 @@ class Config:
     cache_dir: str = os.getenv("XIAOMUSIC_CACHE_DIR", "music/cache")
     cache_max_size_mb: int = int(os.getenv("XIAOMUSIC_CACHE_MAX_SIZE_MB", "500"))
     cache_song_name: str = os.getenv("XIAOMUSIC_CACHE_SONG_NAME", "cache_songs")
-    hostname: str = os.getenv("XIAOMUSIC_HOSTNAME", "http://192.168.2.5")
+    # 不再硬编码上游作者的局域网 IP；留空时由 resolve_playback_host 自动探测
+    hostname: str = os.getenv("XIAOMUSIC_HOSTNAME", "")
     port: int = int(os.getenv("XIAOMUSIC_PORT", "8090"))  # 监听端口
     public_port: int = int(os.getenv("XIAOMUSIC_PUBLIC_PORT", 58090))  # 歌曲访问端口
     proxy: str = os.getenv("XIAOMUSIC_PROXY", None)
@@ -132,6 +137,14 @@ class Config:
     key_match_order: list[str] = field(default_factory=default_key_match_order)
     use_music_api: bool = (
         os.getenv("XIAOMUSIC_USE_MUSIC_API", "false").lower() == "true"
+    )
+    # 下发播放前从容器内探测歌曲 URL 是否可达（只取 1 字节）
+    playback_url_probe: bool = (
+        os.getenv("XIAOMUSIC_PLAYBACK_URL_PROBE", "true").lower() == "true"
+    )
+    # 小米播放接口失败时自动尝试另一种 player_play_music / player_play_url
+    playback_api_fallback: bool = (
+        os.getenv("XIAOMUSIC_PLAYBACK_API_FALLBACK", "true").lower() == "true"
     )
     use_music_audio_id: str = os.getenv(
         "XIAOMUSIC_USE_MUSIC_AUDIO_ID", "436490277987655"
@@ -289,9 +302,17 @@ class Config:
     def __post_init__(self) -> None:
         if self.proxy:
             validate_proxy(self.proxy)
+
+        # hostname 只需填 IP/域名，端口由 public_port 统一管理。
+        # 历史配置里可能带端口或路径，这里统一去掉，避免拼出 duplicate port。
         if self.hostname:
-            if not self.hostname.startswith(("http://", "https://")):
-                self.hostname = f"http://{self.hostname}"  # 默认 http
+            normalized = normalize_base_url(self.hostname)
+            self.hostname = normalized or ""
+
+        # 占位地址（含上游默认值）不能下发给音箱，启动时解析一次有效地址。
+        effective, source = resolve_playback_host(self.hostname)
+        self.__dict__["_effective_hostname"] = effective
+        self.__dict__["_hostname_source"] = source
 
         self.init()
         # 保存配置到 config-example.json 文件
@@ -299,6 +320,18 @@ class Config:
             with open("config-example.json", "w") as f:
                 data = asdict(self)
                 json.dump(data, f, ensure_ascii=False, indent=2)
+
+    @property
+    def effective_hostname(self) -> str:
+        """音箱可访问的音乐服务根地址（http(s)://host，不含端口）。"""
+        return self.__dict__.get("_effective_hostname", "") or normalize_base_url(
+            self.hostname
+        )
+
+    @property
+    def hostname_source(self) -> str:
+        """effective_hostname 的来源：configured / auto / none。"""
+        return self.__dict__.get("_hostname_source", "none")
 
     @classmethod
     def from_options(cls, options: argparse.Namespace) -> Config:
@@ -450,5 +483,6 @@ class Config:
 
     def get_self_netloc(self):
         """获取网络地址"""
-        host = self.hostname.split("//", 1)[1]
+        base = self.effective_hostname or self.hostname
+        host = base.split("//", 1)[-1]
         return f"{host}:{self.public_port}"

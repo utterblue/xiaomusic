@@ -1232,10 +1232,13 @@ class OnlineMusicService:
     def default_url(self, name="silence.mp3"):
         """获取静态音频文件的完整 URL"""
         config = self.xiaomusic.config
-        if config and hasattr(config, "hostname") and hasattr(config, "public_port"):
-            proxy_base = f"{config.hostname}:{config.public_port}"
+        if config and getattr(config, "effective_hostname", ""):
+            proxy_base = f"{config.effective_hostname}:{config.public_port}"
+        elif config and getattr(config, "public_port", 0):
+            # 无法确定局域网地址时只用于容器内探测，绝不再硬编码别人的 IP
+            proxy_base = f"http://127.0.0.1:{config.public_port}"
         else:
-            proxy_base = "http://192.168.31.241:8090"  # 之前代码中就有的ip，我保留。
+            proxy_base = "http://127.0.0.1:8090"
         # return proxy_base + "/static/search.mp3"
         return f"{proxy_base}/static/{name}"
 

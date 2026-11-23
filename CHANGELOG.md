@@ -1,3 +1,16 @@
+## v0.6.3 (2026-11-23)
+
+### Fix
+
+- 修复“语音口令有响应但播放歌曲提示播放失败、音箱不出声”的问题
+- 移除硬编码的上游默认 hostname（192.168.2.5），留空时自动探测本机 IP 并给出明确告警
+- hostname 自动去掉误填的端口/路径，避免拼出 `http://IP:58090:58090` 这类无效链接
+- 本地 `/music/` 链接下发前增加可达性探测，日志直接指出 URL 不可达及排查方向
+- 正确识别 MiNA ubus 的 `data.code` 业务错误；接口失败时自动在
+  `player_play_url` 与 `player_play_music` 之间切换
+- 下发播放前补齐 `device2hardware`，避免 miservice 因查不到型号而抛 KeyError
+- 新增 `/api/debug/playback_status` 诊断接口，集中展示 URL、登录态、设备与修复建议
+
 ## v0.6.2 (2026-11-23)
 
 ### Fix

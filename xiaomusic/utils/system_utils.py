@@ -158,8 +158,8 @@ def try_add_access_control_param(config, url: str) -> str:
 
 
 def is_docker() -> bool:
-    """判断是否在 Docker 容器中运行"""
-    return os.path.exists("/app/.dockerenv")
+    """判断是否在 Docker 容器中运行（兼容镜像工作目录为 /app 的情况）"""
+    return os.path.exists("/.dockerenv") or os.path.exists("/app/.dockerenv")
 
 
 def get_os_architecture() -> str:

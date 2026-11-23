@@ -764,7 +764,7 @@ class MusicLibrary:
             encoded_name = urllib.parse.quote(picture)
             tags["picture"] = try_add_access_control_param(
                 self.config,
-                f"{self.config.hostname}:{self.config.public_port}/picture/{encoded_name}",
+                f"{self.config.effective_hostname}:{self.config.public_port}/picture/{encoded_name}",
             )
 
         # 如果是网络音乐，获取时长
@@ -1334,7 +1334,7 @@ class MusicLibrary:
             proxy_type = "radio" if is_radio else "music"
             token = secrets.token_urlsafe(8)
             set_proxy_token(token, origin_url, bool(is_radio))
-            proxy_url = f"{self.config.hostname}:{self.config.public_port}/proxy/{proxy_type}?token={token}"
+            proxy_url = f"{self.config.effective_hostname}:{self.config.public_port}/proxy/{proxy_type}?token={token}"
             self.log.info(f"Using token proxy url: {proxy_url}")
             return proxy_url
         except Exception as e:
@@ -1342,7 +1342,7 @@ class MusicLibrary:
             self.log.warning(f"token proxy failed, fallback to urlb64: {e}")
             urlb64 = base64.b64encode(origin_url.encode("utf-8")).decode("utf-8")
             proxy_type = "radio" if is_radio else "music"
-            proxy_url = f"{self.config.hostname}:{self.config.public_port}/proxy/{proxy_type}?urlb64={urlb64}"
+            proxy_url = f"{self.config.effective_hostname}:{self.config.public_port}/proxy/{proxy_type}?urlb64={urlb64}"
             self.log.info(f"Using proxy url: {proxy_url}")
             return proxy_url
 
@@ -1383,7 +1383,7 @@ class MusicLibrary:
 
         # 构造URL
         encoded_name = urllib.parse.quote(filename)
-        url = f"{self.config.hostname}:{self.config.public_port}/music/{encoded_name}"
+        url = f"{self.config.effective_hostname}:{self.config.public_port}/music/{encoded_name}"
         return try_add_access_control_param(self.config, url)
 
     @staticmethod
@@ -1409,7 +1409,7 @@ class MusicLibrary:
         if parsed_url.scheme != "self":
             return parsed_url, origin_url
 
-        url = f"{self.config.hostname}:{self.config.public_port}{parsed_url.path}"
+        url = f"{self.config.effective_hostname}:{self.config.public_port}{parsed_url.path}"
         if parsed_url.query:
             url += f"?{parsed_url.query}"
         if parsed_url.fragment:

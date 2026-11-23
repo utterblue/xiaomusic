@@ -29,6 +29,11 @@ from xiaomusic.const import (
 )
 from xiaomusic.events import DEVICE_CONFIG_CHANGED
 from xiaomusic.utils.file_utils import chmodfile
+from xiaomusic.utils.playback_utils import (
+    describe_mi_response,
+    is_mi_response_ok,
+    probe_playback_url,
+)
 from xiaomusic.utils.text_utils import (
     custom_sort_key,
     list2str,
@@ -77,6 +82,9 @@ class XiaoMusicDevice:
         self._duration = 0
         self._paused_time = 0
         self._play_failed_cnt = 0
+        # 最近一次播放失败原因，供 /api/debug/playback_status 诊断
+        self.last_play_error = ""
+        self.last_play_api = ""
 
         self._play_list = []
 
@@ -539,6 +547,29 @@ class XiaoMusicDevice:
             "/music/tmp/" in url or "silence.mp3" in url or "xiaomusic_" in url
         )
 
+        # 2.5 本地歌曲 URL 可达性检查。
+        # 音箱拿不到 URL 时会直接说“播放失败/检查网络配置”，而旧代码只探测
+        # /proxy/ 链接，本地 /music/ 链接从不检查，日志却显示“已经开始播放”。
+        if (
+            self.config.playback_url_probe
+            and url.startswith(("http://", "https://"))
+            and "/music/" in url
+            and not is_system_or_tts
+        ):
+            ok, status, err = await probe_playback_url(url)
+            if ok:
+                self.log.debug(f"播放链接探测成功: {url}")
+            else:
+                self.last_play_error = (
+                    f"播放链接不可达 status={status} error={err} url={url}"
+                )
+                self.log.warning(
+                    "[PLAYBACK] %s。小爱音箱通常会提示“播放失败”，请核对 Web 设置页的 "
+                    "hostname(NAS 局域网 IP) 与本地端口(%s)，或查看 /api/debug/playback_status。",
+                    self.last_play_error,
+                    self.config.public_port,
+                )
+
         # 3. 极速探路器：帮小爱吃下所有的 404/401 炸弹
         if not is_system_or_tts and url and url.startswith("http") and "/proxy/" in url:
             probe_timeout = self._get_proxy_probe_timeout(origin_url)
@@ -987,38 +1018,82 @@ class XiaoMusicDevice:
         return results
 
     async def play_one_url(self, device_id, url, name):
-        """在单个设备上播放URL"""
-        ret = None
+        """在单个设备上播放 URL。
+
+        小米 ubus 接口经常在 HTTP 200 / 顶层 code=0 的情况下用 data.code 报错，
+        旧代码只要没抛异常就算成功，导致日志显示播放中、音箱却没声音。
+        这里校验业务返回码，并在首选接口失败时自动切换另一种播放接口。
+        """
+        mina = self.auth_manager.mina_service
+        if mina is None:
+            self.last_play_error = "mina_service 为空，登录态不可用"
+            self.log.error(f"[PLAYBACK] {self.last_play_error}")
+            return None
+
+        # miservice.play_by_url 会从 device2hardware 查型号，查不到时直接 KeyError。
+        # 设备信息我们已经在配置里有了，先补齐避免无谓失败。
         try:
-            audio_id = await self._get_audio_id(name)
+            mina.device2hardware[device_id] = self.hardware
+        except Exception as e:  # pragma: no cover - 依赖库版本差异
+            self.log.debug(f"补充 device2hardware 失败: {e}")
+
+        audio_id = await self._get_audio_id(name)
+        prefer_music_api = bool(
+            self.config.continue_play
+            or self.config.use_music_api
+            or self.hardware in NEED_USE_PLAY_MUSIC_API
+        )
+
+        async def _by_music_url(_tid, _url, _audio_id):
             if self.config.continue_play:
-                ret = await self.auth_manager.mina_service.play_by_music_url(
-                    device_id, url, _type=1, audio_id=audio_id
+                return await mina.play_by_music_url(
+                    _tid, _url, _type=1, audio_id=_audio_id
                 )
-                self.log.info(
-                    f"play_one_url continue_play device_id:{device_id} ret:{ret} url:{url} audio_id:{audio_id}"
-                )
-            elif self.config.use_music_api or (
-                self.hardware in NEED_USE_PLAY_MUSIC_API
-            ):
-                ret = await self.auth_manager.mina_service.play_by_music_url(
-                    device_id, url, audio_id=audio_id
-                )
-                self.log.info(
-                    f"play_one_url play_by_music_url device_id:{device_id} ret:{ret} url:{url} audio_id:{audio_id}"
-                )
-            else:
-                ret = await self.auth_manager.mina_service.play_by_url(device_id, url)
-                self.log.info(
-                    f"play_one_url play_by_url device_id:{device_id} ret:{ret} url:{url}"
-                )
-        except Exception as e:
-            self.log.exception(f"Execption {e}")
-        return ret
+            return await mina.play_by_music_url(
+                _tid, _url, audio_id=_audio_id
+            )
+
+        async def _by_url(_tid, _url, _audio_id):
+            # 第三个参数必须留给 _type，不能把 audio_id 传进去
+            return await mina.play_by_url(_tid, _url)
+
+        attempts = (
+            [("player_play_music", _by_music_url), ("player_play_url", _by_url)]
+            if prefer_music_api
+            else [("player_play_url", _by_url), ("player_play_music", _by_music_url)]
+        )
+        if not self.config.playback_api_fallback:
+            attempts = attempts[:1]
+
+        last_error = ""
+        for label, send in attempts:
+            try:
+                ret = await send(device_id, url, audio_id)
+                if is_mi_response_ok(ret):
+                    self.last_play_api = label
+                    self.last_play_error = ""
+                    self.log.info(
+                        f"play_one_url {label} 成功 device_id:{device_id} ret:{ret} "
+                        f"url:{url} audio_id:{audio_id}"
+                    )
+                    return ret
+                last_error = f"{label} 返回失败: {describe_mi_response(ret)}"
+                self.log.warning(f"[PLAYBACK] {last_error}")
+            except Exception as e:
+                last_error = f"{label} 异常: {describe_mi_response(e)}"
+                self.log.warning(f"[PLAYBACK] {last_error}")
+
+        self.last_play_api = ""
+        self.last_play_error = last_error or "所有播放接口均失败"
+        self.log.error(
+            f"[PLAYBACK] 播放指令全部失败 device_id:{device_id} url:{url} "
+            f"reason:{self.last_play_error}"
+        )
+        return None
 
     async def _get_audio_id(self, name):
         """获取音频ID"""
-        audio_id = self.config.use_music_audio_id or "1582971365183456177"
+        audio_id = self.config.use_music_audio_id
         if not (self.config.use_music_api or self.config.continue_play):
             return str(audio_id)
 

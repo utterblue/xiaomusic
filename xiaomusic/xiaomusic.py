@@ -29,6 +29,7 @@ from xiaomusic.music_library import MusicLibrary
 from xiaomusic.online_music import OnlineMusicService
 from xiaomusic.plugin import PluginManager
 from xiaomusic.utils.network_utils import download_plugin_audio, downloadfile
+from xiaomusic.utils.playback_utils import probe_playback_url
 from xiaomusic.utils.system_utils import deepcopy_data_no_sensitive_info
 from xiaomusic.utils.text_utils import chinese_to_number
 
@@ -726,6 +727,69 @@ class XiaoMusic:
                 except Exception as e2:
                     self.log.warning(f"[DEVICE] 恢复后重试仍然失败: {e2}")
         return device_list
+
+    async def get_playback_diagnostics(self):
+        """汇总“播放失败”排查信息，供 /api/debug/playback_status 使用。"""
+        config = self.config
+        sample_url = ""
+        if self.music_library and self.music_library.all_music:
+            name = next(iter(self.music_library.all_music))
+            sample_url, _ = await self.music_library.get_music_url(name)
+        if not sample_url:
+            sample_url = (
+                f"{config.effective_hostname}:{config.public_port}/music/<歌曲文件>"
+            )
+
+        url_ok, url_status, url_error = await probe_playback_url(sample_url)
+        devices = []
+        if self.device_manager:
+            for device in self.device_manager.devices.values():
+                devices.append(
+                    {
+                        "did": device.did,
+                        "hardware": device.hardware,
+                        "device_id": device.device_id,
+                        "name": device.name,
+                        "last_play_api": getattr(device, "last_play_api", ""),
+                        "last_play_error": getattr(device, "last_play_error", ""),
+                    }
+                )
+
+        suggestions = []
+        if config.hostname_source != "configured":
+            suggestions.append(
+                "在 Web 设置页把 hostname 填为 NAS/宿主机的局域网 IPv4（不要带端口）"
+            )
+        if not url_ok:
+            suggestions.append(
+                "浏览器打开 sample_url 若也打不开，检查 public_port 与 Docker 端口映射是否一致"
+            )
+            suggestions.append("确认小爱音箱与 NAS 在同一网段，且 NAS 防火墙允许该端口")
+        auth = (
+            self.auth_manager.get_auth_status()
+            if self.auth_manager is not None
+            else {}
+        )
+        if not auth.get("last_login_ok", False):
+            suggestions.append("登录态异常，查看 /api/debug/auth_status 与日志中的 [AUTH]")
+
+        return {
+            "ret": "OK",
+            "version": __version__,
+            "configured_hostname": config.hostname,
+            "effective_hostname": config.effective_hostname,
+            "hostname_source": config.hostname_source,
+            "public_port": config.public_port,
+            "sample_url": sample_url,
+            "sample_url_reachable": url_ok,
+            "sample_url_status": url_status,
+            "sample_url_error": url_error,
+            "playback_url_probe": config.playback_url_probe,
+            "playback_api_fallback": config.playback_api_fallback,
+            "auth": auth,
+            "devices": devices,
+            "suggestions": suggestions,
+        }
 
     async def debug_play_by_music_url(self, arg1=None):
         if arg1 is None:

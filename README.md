@@ -130,6 +130,27 @@ curl http://NAS_IP:58090/api/debug/auth_status
 
 升级时保留 `/app/conf` 卷不变（里面有 `.mi.token` 和 `auth.json`），替换镜像后无需重新扫码；如仍无法恢复，可在 web 设置页重新保存账号密码或重新扫码登录。
 
+### 🔊 语音有响应但“播放失败/没声音”（v0.6.3）
+
+小米音箱说“播放失败、检查网络配置”，通常是它拿不到 xiaomusic 生成的歌曲链接，而不是账号登录失败。本分支做了以下修复：
+
+- 不再把上游作者的 `192.168.2.5` 当作默认 hostname；留空时自动探测本机 IP，并在日志中提示如何确认；
+- hostname 中误填的端口/路径会被自动剥离，端口统一由 `public_port` 配置，避免生成 `http://IP:58090:58090/...`；
+- 下发本地歌曲前从服务端探测 `/music/` 链接，日志会明确写出不可达的 URL 与排查方向；
+- 正确识别小米 ubus 接口 `data.code` 级别的错误，并在 `player_play_url` / `player_play_music` 两种接口间自动切换；
+- 新增诊断接口：
+
+```
+curl http://NAS_IP:58090/api/debug/playback_status
+```
+
+重点看 `effective_hostname`、`sample_url`、`sample_url_reachable` 和 `suggestions`。若 `sample_url_reachable` 为 `false`，浏览器打开 `sample_url` 也失败，说明 hostname 或端口不对。常见修正方式：
+
+1. 在 Web 设置页把 **NAS的IP或域名** 填为宿主机局域网 IPv4（**不要带端口**，不要用 localhost/127.0.0.1/容器 IP）；
+2. **本地端口** 必须与 Docker 映射的宿主端口一致，例如 `8090:8090` 时填 8090，`58090:8090` 时填 58090；
+3. 音箱与 NAS 需在同一网段，检查 NAS 防火墙；声音格式可先用 mp3 测试；
+4. 触屏版/部分型号若仍无声，打开【型号兼容模式】。
+
 遇到问题可以去 web 设置页面底部点击【下载日志文件】按钮，然后搜索一下日志文件内容确保里面没有账号密码信息后(有就删除这些敏感信息)，然后在提 issues 反馈问题时把下载的日志文件带上。
 
 > [!TIP]

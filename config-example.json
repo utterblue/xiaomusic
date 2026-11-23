@@ -9,7 +9,7 @@
   "download_path": "music/download",
   "conf_path": "conf",
   "cache_dir": "music/cache",
-  "hostname": "http://192.168.2.5",
+  "hostname": "",
   "port": 8090,
   "public_port": 58090,
   "proxy": null,
@@ -89,6 +89,8 @@
     "测试链接"
   ],
   "use_music_api": false,
+  "playback_url_probe": true,
+  "playback_api_fallback": true,
   "use_music_audio_id": "1582971365183456177",
   "use_music_id": "355454500",
   "log_file": "xiaomusic.log.txt",

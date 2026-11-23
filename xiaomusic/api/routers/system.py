@@ -286,6 +286,12 @@ async def auth_status():
     return xiaomusic.auth_manager.get_auth_status()
 
 
+@router.get("/api/debug/playback_status")
+async def playback_status():
+    """排查“播放失败/没声音”：检查下发给音箱的 URL 是否可达及登录/设备状态。"""
+    return await xiaomusic.get_playback_diagnostics()
+
+
 @router.get("/latestversion")
 async def latest_version():
     """获取最新版本"""
