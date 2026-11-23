@@ -1,16 +1,18 @@
 # 定义构建参数，用于指定架构和基础镜像
+# 基础镜像使用国内加速源，避免国内网络无法访问 Docker Hub
 ARG PYTHON_VERSION=3.14
+ARG MIRROR=docker.1ms.run/library
 
 # 根据不同架构选择对应的基础镜像
-FROM python:${PYTHON_VERSION}-alpine AS base-linux-amd64
-FROM python:${PYTHON_VERSION}-alpine AS base-linux-arm64
-FROM python:${PYTHON_VERSION}-bookworm AS base-linux-arm-v7
+FROM ${MIRROR}/python:${PYTHON_VERSION}-alpine AS base-linux-amd64
+FROM ${MIRROR}/python:${PYTHON_VERSION}-alpine AS base-linux-arm64
+FROM ${MIRROR}/python:${PYTHON_VERSION}-bookworm AS base-linux-arm-v7
 
-FROM python:${PYTHON_VERSION}-alpine AS run-linux-amd64
-FROM python:${PYTHON_VERSION}-alpine AS run-linux-arm64
-FROM python:${PYTHON_VERSION}-bookworm AS run-linux-arm-v7
+FROM ${MIRROR}/python:${PYTHON_VERSION}-alpine AS run-linux-amd64
+FROM ${MIRROR}/python:${PYTHON_VERSION}-alpine AS run-linux-arm64
+FROM ${MIRROR}/python:${PYTHON_VERSION}-bookworm AS run-linux-arm-v7
 
-FROM --platform=$BUILDPLATFORM alpine AS shelf
+FROM --platform=$BUILDPLATFORM ${MIRROR}/alpine:latest AS shelf
 # 这里的逻辑是关键：接收标准的 TARGETPLATFORM (如 linux/amd64)
 # 并将其转换为我们定义的别名格式 (如 linux-amd64)
 ARG TARGETPLATFORM
@@ -22,7 +24,8 @@ FROM base-${TARGETPLATFORM//\//-} AS builder
 
 # 安装构建依赖（根据基础镜像类型区分）
 RUN if [ -f /etc/alpine-release ]; then \
-        # Alpine系统依赖
+        # Alpine系统依赖（换国内 apk 源，失败则回退默认源）
+        sed -i 's@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g' /etc/apk/repositories || true; \
         apk add --no-cache \
         build-base \
         nodejs \
@@ -35,7 +38,8 @@ RUN if [ -f /etc/alpine-release ]; then \
         tiff-dev \
         libwebp-dev; \
     else \
-        # Debian系统依赖
+        # Debian系统依赖（换国内 apt 源，失败则回退默认源）
+        sed -i 's@deb.debian.org@mirrors.aliyun.com@g; s@security.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources || true; \
         apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         nodejs \
@@ -50,7 +54,9 @@ RUN if [ -f /etc/alpine-release ]; then \
         && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# 安装PDM
+# 安装PDM（pip/npm 使用国内源，避免国内网络超时）
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
 RUN pip install -U pdm
 ENV PDM_CHECK_UPDATE=false
 
@@ -59,7 +65,7 @@ COPY pyproject.toml README.md package.json ./
 
 # 安装Python和Node.js依赖
 RUN pdm install --prod --no-editable -v
-RUN npm install --loglevel=verbose
+RUN npm config set registry https://registry.npmmirror.com && npm install --loglevel=verbose
 
 # 复制应用代码
 COPY xiaomusic/ ./xiaomusic/
@@ -74,13 +80,15 @@ FROM run-${TARGETPLATFORM//\//-} AS runner
 
 # 安装运行时依赖（区分Alpine和Debian）
 RUN if [ -f /etc/alpine-release ]; then \
-        # Alpine运行时依赖
+        # Alpine运行时依赖（换国内 apk 源，失败则回退默认源）
+        sed -i 's@dl-cdn.alpinelinux.org@mirrors.aliyun.com@g' /etc/apk/repositories || true; \
         apk add --no-cache \
         ffmpeg \
         nodejs \
         npm; \
     else \
-        # Debian运行时依赖
+        # Debian运行时依赖（换国内 apt 源，失败则回退默认源）
+        sed -i 's@deb.debian.org@mirrors.aliyun.com@g; s@security.debian.org@mirrors.aliyun.com@g' /etc/apt/sources.list.d/debian.sources || true; \
         apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         nodejs \
