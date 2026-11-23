@@ -55,8 +55,10 @@ RUN if [ -f /etc/alpine-release ]; then \
     fi
 
 # 安装PDM（pip/npm 使用国内源，避免国内网络超时）
-ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ENV PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+# 阿里云源对家庭宽带/NAS 出口 IP 最友好；清华 CDN 偶发 403
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ENV PIP_TRUSTED_HOST=mirrors.aliyun.com
+ENV PDM_PYPI_URL=https://mirrors.aliyun.com/pypi/simple/
 RUN pip install -U pdm
 ENV PDM_CHECK_UPDATE=false
 
