@@ -31,7 +31,6 @@ from xiaomusic.events import DEVICE_CONFIG_CHANGED
 from xiaomusic.utils.file_utils import chmodfile
 from xiaomusic.utils.playback_utils import (
     describe_mi_response,
-    is_mi_response_ok,
     probe_playback_url,
 )
 from xiaomusic.utils.text_utils import (
@@ -1050,8 +1049,7 @@ class XiaoMusicDevice:
                 label = "player_play_url"
                 ret = await mina.play_by_url(device_id, url)
             self.log.info(
-                f"play_one_url {label} device_id:{device_id} ret:{ret} "
-                f"url:{url}"
+                f"play_one_url {label} device_id:{device_id} ret:{ret} url:{url}"
             )
         except Exception as e:
             self.last_play_error = f"{label} 异常: {describe_mi_response(e)}"

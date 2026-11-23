@@ -4,8 +4,8 @@ import asyncio
 import logging
 from types import SimpleNamespace
 
-from xiaomusic.utils import playback_utils
 from xiaomusic.device_player import XiaoMusicDevice
+from xiaomusic.utils import playback_utils
 from xiaomusic.utils.playback_utils import (
     is_mi_response_ok,
     is_placeholder_hostname,
@@ -18,7 +18,10 @@ log = logging.getLogger("test")
 def test_normalize_base_url_strips_port_and_path():
     assert normalize_base_url("192.168.1.10") == "http://192.168.1.10"
     assert normalize_base_url("http://192.168.1.10:58090/foo") == "http://192.168.1.10"
-    assert normalize_base_url("https://music.example.com:443/") == "https://music.example.com"
+    assert (
+        normalize_base_url("https://music.example.com:443/")
+        == "https://music.example.com"
+    )
     assert normalize_base_url("  localhost ") == "http://localhost"
     assert normalize_base_url("") == ""
 
