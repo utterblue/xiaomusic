@@ -83,6 +83,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Read application version
+        id: app_version
+        run: |
+          VERSION=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' xiaomusic/__init__.py)
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -102,7 +108,9 @@ jobs:
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           context: .
           push: true
-          tags: ${{ env.VERSION_TAG }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/xiaomusic:${{ steps.app_version.outputs.version }}
+            ${{ env.LATEST_TAG }}
           cache-from: |
             type=gha,scope=amd64
             type=gha,scope=arm64
