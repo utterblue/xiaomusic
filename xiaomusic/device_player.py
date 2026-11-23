@@ -1020,9 +1020,11 @@ class XiaoMusicDevice:
     async def play_one_url(self, device_id, url, name):
         """在单个设备上播放 URL。
 
-        小米 ubus 接口经常在 HTTP 200 / 顶层 code=0 的情况下用 data.code 报错，
-        旧代码只要没抛异常就算成功，导致日志显示播放中、音箱却没声音。
-        这里校验业务返回码，并在首选接口失败时自动切换另一种播放接口。
+        这里刻意保持与上游一致的“单一接口、不抛异常即成功”行为：
+        不同型号的小米 ubus 返回结构差异极大（data.code/info 形态不统一），
+        用严格的返回值判断会把成功的下发误判为失败；一旦再补发另一种播放
+        接口（参数不同），反而会打断本来正常的播放，表现就是“一首都放不了”。
+        返回值只用于诊断记录，不再据此判定成败。
         """
         mina = self.auth_manager.mina_service
         if mina is None:
@@ -1030,64 +1032,40 @@ class XiaoMusicDevice:
             self.log.error(f"[PLAYBACK] {self.last_play_error}")
             return None
 
-        # miservice.play_by_url 会从 device2hardware 查型号，查不到时直接 KeyError。
-        # 设备信息我们已经在配置里有了，先补齐避免无谓失败。
+        ret = None
+        label = ""
         try:
-            mina.device2hardware[device_id] = self.hardware
-        except Exception as e:  # pragma: no cover - 依赖库版本差异
-            self.log.debug(f"补充 device2hardware 失败: {e}")
-
-        audio_id = await self._get_audio_id(name)
-        prefer_music_api = bool(
-            self.config.continue_play
-            or self.config.use_music_api
-            or self.hardware in NEED_USE_PLAY_MUSIC_API
-        )
-
-        async def _by_music_url(_tid, _url, _audio_id):
+            audio_id = await self._get_audio_id(name)
             if self.config.continue_play:
-                return await mina.play_by_music_url(
-                    _tid, _url, _type=1, audio_id=_audio_id
+                label = "player_play_music(_type=1)"
+                ret = await mina.play_by_music_url(
+                    device_id, url, _type=1, audio_id=audio_id
                 )
-            return await mina.play_by_music_url(_tid, _url, audio_id=_audio_id)
+            elif self.config.use_music_api or (
+                self.hardware in NEED_USE_PLAY_MUSIC_API
+            ):
+                label = "player_play_music"
+                ret = await mina.play_by_music_url(device_id, url, audio_id=audio_id)
+            else:
+                label = "player_play_url"
+                ret = await mina.play_by_url(device_id, url)
+            self.log.info(
+                f"play_one_url {label} device_id:{device_id} ret:{ret} "
+                f"url:{url}"
+            )
+        except Exception as e:
+            self.last_play_error = f"{label} 异常: {describe_mi_response(e)}"
+            self.log.exception(f"[PLAYBACK] play_one_url 异常: {e}")
+            return None
 
-        async def _by_url(_tid, _url, _audio_id):
-            # 第三个参数必须留给 _type，不能把 audio_id 传进去
-            return await mina.play_by_url(_tid, _url)
-
-        attempts = (
-            [("player_play_music", _by_music_url), ("player_play_url", _by_url)]
-            if prefer_music_api
-            else [("player_play_url", _by_url), ("player_play_music", _by_music_url)]
-        )
-        if not self.config.playback_api_fallback:
-            attempts = attempts[:1]
-
-        last_error = ""
-        for label, send in attempts:
-            try:
-                ret = await send(device_id, url, audio_id)
-                if is_mi_response_ok(ret):
-                    self.last_play_api = label
-                    self.last_play_error = ""
-                    self.log.info(
-                        f"play_one_url {label} 成功 device_id:{device_id} ret:{ret} "
-                        f"url:{url} audio_id:{audio_id}"
-                    )
-                    return ret
-                last_error = f"{label} 返回失败: {describe_mi_response(ret)}"
-                self.log.warning(f"[PLAYBACK] {last_error}")
-            except Exception as e:
-                last_error = f"{label} 异常: {describe_mi_response(e)}"
-                self.log.warning(f"[PLAYBACK] {last_error}")
-
-        self.last_play_api = ""
-        self.last_play_error = last_error or "所有播放接口均失败"
-        self.log.error(
-            f"[PLAYBACK] 播放指令全部失败 device_id:{device_id} url:{url} "
-            f"reason:{self.last_play_error}"
-        )
-        return None
+        # 仅记录诊断信息，不改变原有的成败判断（不抛异常即视为下发成功）。
+        self.last_play_api = label
+        if ret is None:
+            self.last_play_error = f"{label} 返回为空（部分型号属于正常现象）"
+            self.log.warning(f"[PLAYBACK] {self.last_play_error}")
+        else:
+            self.last_play_error = ""
+        return ret
 
     async def _get_audio_id(self, name):
         """获取音频ID"""

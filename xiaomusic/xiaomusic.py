@@ -729,63 +729,104 @@ class XiaoMusic:
         return device_list
 
     async def get_playback_diagnostics(self):
-        """汇总“播放失败”排查信息，供 /api/debug/playback_status 使用。"""
+        """汇总“播放失败”排查信息，供 /api/debug/playback_status 使用。
+
+        诊断接口本身必须绝对健壮：任何单个字段取值失败都不能让它返回 500，
+        否则排障时反而拿不到任何信息。
+        """
         config = self.config
+
+        def safe(prop, default=""):
+            try:
+                value = prop()
+                return default if value is None else value
+            except Exception as exc:  # noqa: BLE001 - 仅用于诊断容错
+                return f"<读取失败: {exc}>"
+
+        # 取一首真实歌曲拼出实际下发给音箱的 URL
         sample_url = ""
-        if self.music_library and self.music_library.all_music:
-            name = next(iter(self.music_library.all_music))
-            sample_url, _ = await self.music_library.get_music_url(name)
-        if not sample_url:
+        try:
+            if self.music_library and self.music_library.all_music:
+                name = next(iter(self.music_library.all_music))
+                got = await self.music_library.get_music_url(name)
+                sample_url = got[0] if isinstance(got, (tuple, list)) else str(got or "")
+        except Exception as exc:  # noqa: BLE001
+            sample_url = f"<取歌曲 URL 失败: {exc}>"
+        if not sample_url or sample_url.startswith("<"):
             sample_url = (
-                f"{config.effective_hostname}:{config.public_port}/music/<歌曲文件>"
+                f"{safe(lambda: config.effective_hostname)}:"
+                f"{safe(lambda: config.public_port)}/music/<歌曲文件>"
             )
 
-        url_ok, url_status, url_error = await probe_playback_url(sample_url)
+        url_ok, url_status, url_error = False, 0, ""
+        if sample_url.startswith(("http://", "https://")):
+            try:
+                url_ok, url_status, url_error = await probe_playback_url(sample_url)
+            except Exception as exc:  # noqa: BLE001
+                url_error = f"探测异常: {exc}"
+
         devices = []
-        if self.device_manager:
-            for device in self.device_manager.devices.values():
-                devices.append(
-                    {
-                        "did": device.did,
-                        "hardware": device.hardware,
-                        "device_id": device.device_id,
-                        "name": device.name,
-                        "last_play_api": getattr(device, "last_play_api", ""),
-                        "last_play_error": getattr(device, "last_play_error", ""),
-                    }
-                )
+        try:
+            if self.device_manager and self.device_manager.devices:
+                for device in self.device_manager.devices.values():
+                    devices.append(
+                        {
+                            "did": safe(lambda d=device: d.did),
+                            "hardware": safe(lambda d=device: d.hardware),
+                            "device_id": safe(lambda d=device: d.device_id),
+                            # XiaoMusicDevice 没有 name 属性，名字在 device.device.name
+                            "name": safe(
+                                lambda d=device: getattr(
+                                    getattr(d, "device", None), "name", ""
+                                )
+                            ),
+                            "last_play_api": safe(
+                                lambda d=device: getattr(d, "last_play_api", "")
+                            ),
+                            "last_play_error": safe(
+                                lambda d=device: getattr(d, "last_play_error", "")
+                            ),
+                        }
+                    )
+        except Exception as exc:  # noqa: BLE001
+            devices.append({"error": f"读取设备列表失败: {exc}"})
 
         suggestions = []
-        if config.hostname_source != "configured":
+        hostname_source = safe(lambda: config.hostname_source)
+        effective = safe(lambda: config.effective_hostname)
+        if hostname_source != "configured":
             suggestions.append(
-                "在 Web 设置页把 hostname 填为 NAS/宿主机的局域网 IPv4（不要带端口）"
+                "关键：在 Web 设置页把 hostname 填为 NAS/宿主机的局域网 IPv4（不要带端口）。"
+                "Docker bridge 网络下自动探测到的是容器内网 IP，小爱音箱访问不到，"
+                "就会出现“能下载歌曲但播放失败”。"
             )
         if not url_ok:
             suggestions.append(
                 "浏览器打开 sample_url 若也打不开，检查 public_port 与 Docker 端口映射是否一致"
             )
             suggestions.append("确认小爱音箱与 NAS 在同一网段，且 NAS 防火墙允许该端口")
-        auth = (
-            self.auth_manager.get_auth_status() if self.auth_manager is not None else {}
+        auth = safe(
+            lambda: self.auth_manager.get_auth_status()
+            if self.auth_manager is not None
+            else {},
+            default={},
         )
-        if not auth.get("last_login_ok", False):
-            suggestions.append(
-                "登录态异常，查看 /api/debug/auth_status 与日志中的 [AUTH]"
-            )
+        if isinstance(auth, dict) and not auth.get("last_login_ok", False):
+            suggestions.append("登录态异常，查看 /api/debug/auth_status 与日志中的 [AUTH]")
 
         return {
             "ret": "OK",
             "version": __version__,
-            "configured_hostname": config.hostname,
-            "effective_hostname": config.effective_hostname,
-            "hostname_source": config.hostname_source,
-            "public_port": config.public_port,
+            "configured_hostname": safe(lambda: config.hostname),
+            "effective_hostname": effective,
+            "hostname_source": hostname_source,
+            "public_port": safe(lambda: config.public_port),
             "sample_url": sample_url,
             "sample_url_reachable": url_ok,
             "sample_url_status": url_status,
             "sample_url_error": url_error,
-            "playback_url_probe": config.playback_url_probe,
-            "playback_api_fallback": config.playback_api_fallback,
+            "playback_url_probe": safe(lambda: config.playback_url_probe),
+            "playback_api_fallback": safe(lambda: config.playback_api_fallback),
             "auth": auth,
             "devices": devices,
             "suggestions": suggestions,

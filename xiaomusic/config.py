@@ -15,6 +15,7 @@ from xiaomusic.const import (
     PLAY_TYPE_SIN,
 )
 from xiaomusic.utils.playback_utils import (
+    is_placeholder_hostname,
     normalize_base_url,
     resolve_playback_host,
 )
@@ -303,16 +304,7 @@ class Config:
         if self.proxy:
             validate_proxy(self.proxy)
 
-        # hostname 只需填 IP/域名，端口由 public_port 统一管理。
-        # 历史配置里可能带端口或路径，这里统一去掉，避免拼出 duplicate port。
-        if self.hostname:
-            normalized = normalize_base_url(self.hostname)
-            self.hostname = normalized or ""
-
-        # 占位地址（含上游默认值）不能下发给音箱，启动时解析一次有效地址。
-        effective, source = resolve_playback_host(self.hostname)
-        self.__dict__["_effective_hostname"] = effective
-        self.__dict__["_hostname_source"] = source
+        self._refresh_hostname()
 
         self.init()
         # 保存配置到 config-example.json 文件
@@ -321,16 +313,45 @@ class Config:
                 data = asdict(self)
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def _refresh_hostname(self) -> None:
+        """根据当前 hostname 重新解析对音箱有效的根地址。
+
+        必须在任何修改 hostname 的路径后调用（启动、Web 保存配置等），
+        否则 effective_hostname 会停留在旧值，下发错误的播放 URL。
+        """
+        # hostname 只需填 IP/域名，端口由 public_port 统一管理。
+        # 历史配置里可能带端口或路径，这里统一去掉，避免拼出 duplicate port。
+        if self.hostname:
+            normalized = normalize_base_url(self.hostname)
+            self.hostname = normalized or ""
+
+        effective, source = resolve_playback_host(self.hostname)
+        self.__dict__["_effective_hostname"] = effective
+        self.__dict__["_hostname_source"] = source
+        self.__dict__["_effective_from_hostname"] = normalize_base_url(self.hostname)
+
     @property
     def effective_hostname(self) -> str:
-        """音箱可访问的音乐服务根地址（http(s)://host，不含端口）。"""
-        return self.__dict__.get("_effective_hostname", "") or normalize_base_url(
-            self.hostname
-        )
+        """音箱可访问的音乐服务根地址（http(s)://host，不含端口）。
+
+        动态计算：若 hostname 已被更新但尚未 refresh，也能立即反映出来。
+        """
+        cached = self.__dict__.get("_effective_hostname", "")
+        cached_from = self.__dict__.get("_effective_from_hostname", "")
+        current = normalize_base_url(self.hostname)
+        if cached and cached_from == current:
+            return cached
+        # hostname 有明确有效值，直接以它为准（Web 设置页刚保存也能立刻生效）
+        if current and not is_placeholder_hostname(current):
+            return current
+        return cached or current
 
     @property
     def hostname_source(self) -> str:
         """effective_hostname 的来源：configured / auto / none。"""
+        current = normalize_base_url(self.hostname)
+        if current and not is_placeholder_hostname(current):
+            return "configured"
         return self.__dict__.get("_hostname_source", "none")
 
     @classmethod
@@ -383,6 +404,10 @@ class Config:
             converted_value = self.convert_value(k, v, type_hints)
             if converted_value is not None:
                 setattr(self, k, converted_value)
+        # hostname/端口变化后必须重新解析有效根地址，否则下发给音箱的
+        # URL 仍指向旧 IP（表现为“能下载歌曲但小爱提示播放失败”）。
+        if "hostname" in data or "public_port" in data:
+            self._refresh_hostname()
         self.init()
 
     def get_active_cmd_arr(self):

@@ -1,3 +1,22 @@
+## v0.6.4 (2026-11-24)
+
+### Fix
+
+- 修复 v0.6.3 升级后“一首都放不了”的回归：移除播放接口的严格返回值判断与自动切换，
+  恢复上游稳定的单接口下发行为。不同型号的 ubus 返回结构不统一，严格判断会把成功
+  的播放下发误判为失败并补发第二种接口，反而打断正常播放
+- 修复 Web 设置页保存 hostname 后不生效的问题：`effective_hostname` 改为动态计算，
+  并在 hostname/端口变化时重新解析。此前即使填了正确的 NAS 局域网 IP，下发给音箱的
+  URL 仍指向旧的探测地址（容器内网 IP），导致“能下载歌曲但小爱提示播放失败”
+- 修复 `/api/debug/playback_status` 诊断接口返回 500 的问题：`XiaoMusicDevice` 没有
+  `name` 属性导致异常；整个诊断方法增加容错，任一字段读取失败都不会再返回 500
+- 诊断接口补充容器内网 IP 的明确提示，方便在飞牛 OS / Docker 环境排障
+
+### Upgrade
+
+- 升级后请到 Web 设置页确认“NAS的IP或域名”为宿主机局域网 IPv4（不带端口），保存后立即生效
+- 升级后先访问 `/api/debug/playback_status`，确认 `effective_hostname` 正确、`sample_url_reachable` 为 true
+
 ## v0.6.3 (2026-11-23)
 
 ### Fix
