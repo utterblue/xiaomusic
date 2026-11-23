@@ -766,12 +766,12 @@ class XiaoMusic:
             )
             suggestions.append("确认小爱音箱与 NAS 在同一网段，且 NAS 防火墙允许该端口")
         auth = (
-            self.auth_manager.get_auth_status()
-            if self.auth_manager is not None
-            else {}
+            self.auth_manager.get_auth_status() if self.auth_manager is not None else {}
         )
         if not auth.get("last_login_ok", False):
-            suggestions.append("登录态异常，查看 /api/debug/auth_status 与日志中的 [AUTH]")
+            suggestions.append(
+                "登录态异常，查看 /api/debug/auth_status 与日志中的 [AUTH]"
+            )
 
         return {
             "ret": "OK",

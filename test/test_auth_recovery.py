@@ -74,9 +74,7 @@ class FakeSession:
 
 
 def make_account(session, token_path, token=None, username="user", password="pass"):
-    account = RobustMiAccount(
-        session, username, password, str(token_path), log=log
-    )
+    account = RobustMiAccount(session, username, password, str(token_path), log=log)
     account.token = dict(token) if token else None
     return account
 
@@ -212,7 +210,10 @@ def test_mi_request_refreshes_401_without_dropping_pass_token(tmp_path):
 
     result = asyncio.run(
         account.mi_request(
-            SERVICE_MICOAPI, "https://api2.mina.mi.com/admin/v2/device_list", None, headers
+            SERVICE_MICOAPI,
+            "https://api2.mina.mi.com/admin/v2/device_list",
+            None,
+            headers,
         )
     )
 
@@ -226,11 +227,19 @@ def test_get_polling_cookies_uses_current_in_memory_token():
     from xiaomusic.auth import AuthManager
 
     manager = object.__new__(AuthManager)
-    manager.config = type("Config", (), {"cookie": "", "get_one_device_id": lambda self: "speaker-id"})()
-    account = type("Account", (), {"token": {
-        "userId": "123",
-        SERVICE_MICOAPI: ("ss", "new-service-token"),
-    }})()
+    manager.config = type(
+        "Config", (), {"cookie": "", "get_one_device_id": lambda self: "speaker-id"}
+    )()
+    account = type(
+        "Account",
+        (),
+        {
+            "token": {
+                "userId": "123",
+                SERVICE_MICOAPI: ("ss", "new-service-token"),
+            }
+        },
+    )()
     manager.mina_service = type("Mina", (), {"account": account})()
     manager._load_token_file = lambda: None
 

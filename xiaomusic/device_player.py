@@ -1049,9 +1049,7 @@ class XiaoMusicDevice:
                 return await mina.play_by_music_url(
                     _tid, _url, _type=1, audio_id=_audio_id
                 )
-            return await mina.play_by_music_url(
-                _tid, _url, audio_id=_audio_id
-            )
+            return await mina.play_by_music_url(_tid, _url, audio_id=_audio_id)
 
         async def _by_url(_tid, _url, _audio_id):
             # 第三个参数必须留给 _type，不能把 audio_id 传进去

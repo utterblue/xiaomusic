@@ -468,9 +468,9 @@ class AuthManager:
     def _build_polling_cookie(self, token_data):
         """从任意 token 数据源构造对话轮询所需的 cookie jar。"""
         user_id = token_data.get("userId")
-        service_token = get_service_token(token_data, SERVICE_MICOAPI) or token_data.get(
-            "serviceToken", ""
-        )
+        service_token = get_service_token(
+            token_data, SERVICE_MICOAPI
+        ) or token_data.get("serviceToken", "")
         if not service_token:
             return None
         device_id = self.config.get_one_device_id() or token_data.get("deviceId", "")
@@ -502,9 +502,9 @@ class AuthManager:
             return None
 
         user_id = token_data.get("userId")
-        service_token = get_service_token(token_data, SERVICE_MICOAPI) or token_data.get(
-            "serviceToken", ""
-        )
+        service_token = get_service_token(
+            token_data, SERVICE_MICOAPI
+        ) or token_data.get("serviceToken", "")
         cookies = {"deviceId": device_id or self.config.get_one_device_id() or ""}
         if user_id:
             cookies["userId"] = user_id

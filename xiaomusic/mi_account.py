@@ -194,7 +194,10 @@ class RobustMiAccount(MiAccount):
             if not service_token:
                 raise XiaomiAuthError(f"无法获取 {sid} 的 serviceToken")
 
-            token[sid] = (token.get("ssecurity") or original_token.get("ssecurity"), service_token)
+            token[sid] = (
+                token.get("ssecurity") or original_token.get("ssecurity"),
+                service_token,
+            )
             self.token = token
             self.last_login_error = ""
             self.last_login_at[sid] = time.time()
@@ -264,7 +267,10 @@ class RobustMiAccount(MiAccount):
                 code = resp.get("code")
                 if code == 0:
                     return resp
-                if "auth" in str(resp.get("message", "")).lower() or code in (401, 70016):
+                if "auth" in str(resp.get("message", "")).lower() or code in (
+                    401,
+                    70016,
+                ):
                     status = 401
             else:
                 resp = await r.text()
