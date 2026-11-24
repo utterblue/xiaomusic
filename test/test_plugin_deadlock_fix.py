@@ -28,7 +28,9 @@ def _make_manager(tmp_path, monkeypatch, plugin_names):
 
     os.makedirs(mgr.plugins_dir, exist_ok=True)
     for name in plugin_names:
-        with open(os.path.join(mgr.plugins_dir, f"{name}.js"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(mgr.plugins_dir, f"{name}.js"), "w", encoding="utf-8"
+        ) as f:
             f.write("module.exports = {};")
 
     config = {
@@ -62,7 +64,10 @@ def test_enable_plugin_when_not_in_runtime_table(tmp_path, monkeypatch):
 
     cfg = _read_config(mgr)["music_free_info"]
     assert "gh_padao_fun" in cfg["enabled_plugins"]
-    assert next(p for p in cfg["plugins_info"] if p["name"] == "gh_padao_fun")["enabled"] is True
+    assert (
+        next(p for p in cfg["plugins_info"] if p["name"] == "gh_padao_fun")["enabled"]
+        is True
+    )
 
 
 def test_uninstall_plugin_when_not_in_runtime_table(tmp_path, monkeypatch):
@@ -83,7 +88,9 @@ def test_uninstall_then_enable_cycle(tmp_path, monkeypatch):
     mgr = _make_manager(tmp_path, monkeypatch, ["cat_plugin"])
     assert mgr.uninstall_plugin("cat_plugin") is True
     # 重新造出插件文件，模拟重新下载
-    with open(os.path.join(mgr.plugins_dir, "cat_plugin.js"), "w", encoding="utf-8") as f:
+    with open(
+        os.path.join(mgr.plugins_dir, "cat_plugin.js"), "w", encoding="utf-8"
+    ) as f:
         f.write("module.exports = {};")
     assert mgr.enable_plugin("cat_plugin") is True
     assert "cat_plugin" in _read_config(mgr)["music_free_info"]["enabled_plugins"]
@@ -108,4 +115,7 @@ def test_disable_plugin_updates_config(tmp_path, monkeypatch):
     assert mgr.disable_plugin("to_disable") is True
     cfg = _read_config(mgr)["music_free_info"]
     assert "to_disable" not in cfg["enabled_plugins"]
-    assert next(p for p in cfg["plugins_info"] if p["name"] == "to_disable")["enabled"] is False
+    assert (
+        next(p for p in cfg["plugins_info"] if p["name"] == "to_disable")["enabled"]
+        is False
+    )

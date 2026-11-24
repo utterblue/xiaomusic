@@ -2681,8 +2681,7 @@ class JSPluginManager:
                     _cfg = json.load(f)
                 _mfi = _cfg.get("music_free_info", {})
                 config_has_plugin = any(
-                    pi.get("name") == plugin_name
-                    for pi in _mfi.get("plugins_info", [])
+                    pi.get("name") == plugin_name for pi in _mfi.get("plugins_info", [])
                 ) or plugin_name in _mfi.get("enabled_plugins", [])
             except Exception as e:
                 self.log.error(f"Failed to inspect config for {plugin_name}: {e}")
