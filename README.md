@@ -7,15 +7,15 @@
 > 当前版本重点修复了小米登录态容易失效的情况（连接几分钟后设备消失、TTS/控制触发后掉线），
 > 并补充了用于 NAS/Docker 排查的登录状态接口。
 
-[![GitHub License](https://img.shields.io/github/license/hanxi/xiaomusic)](https://github.com/hanxi/xiaomusic)
-[![Docker Image Version](https://img.shields.io/docker/v/hanxi/xiaomusic?sort=semver&label=docker%20image)](https://hub.docker.com/r/hanxi/xiaomusic)
-[![Docker Pulls](https://img.shields.io/docker/pulls/hanxi/xiaomusic)](https://hub.docker.com/r/hanxi/xiaomusic)
+[![GitHub License](https://img.shields.io/github/license/utterblue/xiaomusic)](https://github.com/utterblue/xiaomusic)
+[![Docker Image Version](https://img.shields.io/docker/v/utterblueme/xiaomusic?sort=semver&label=docker%20image)](https://hub.docker.com/r/utterblueme/xiaomusic)
+[![Docker Pulls](https://img.shields.io/docker/pulls/utterblueme/xiaomusic)](https://hub.docker.com/r/utterblueme/xiaomusic)
 [![PyPI - Version](https://img.shields.io/pypi/v/xiaomusic)](https://pypi.org/project/xiaomusic/)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/xiaomusic)](https://pypi.org/project/xiaomusic/)
-[![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fhanxi%2Fxiaomusic%2Fmain%2Fpyproject.toml)](https://pypi.org/project/xiaomusic/)
-[![GitHub Release](https://img.shields.io/github/v/release/hanxi/xiaomusic)](https://github.com/hanxi/xiaomusic/releases)
-[![Visitors](https://api.visitorbadge.io/api/daily?path=hanxi%2Fxiaomusic&label=daily%20visitor&countColor=%232ccce4&style=flat)](https://visitorbadge.io/status?path=hanxi%2Fxiaomusic)
-[![Visitors](https://api.visitorbadge.io/api/visitors?path=hanxi%2Fxiaomusic&label=total%20visitor&countColor=%232ccce4&style=flat)](https://visitorbadge.io/status?path=hanxi%2Fxiaomusic)
+[![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Futterblue%2Fxiaomusic%2Fmain%2Fpyproject.toml)](https://github.com/utterblue/xiaomusic/blob/main/pyproject.toml)
+[![GitHub Release](https://img.shields.io/github/v/release/utterblue/xiaomusic)](https://github.com/utterblue/xiaomusic/releases)
+[![Visitors](https://api.visitorbadge.io/api/daily?path=utterblue%2Fxiaomusic&label=daily%20visitor&countColor=%232ccce4&style=flat)](https://visitorbadge.io/status?path=utterblue%2Fxiaomusic)
+[![Visitors](https://api.visitorbadge.io/api/visitors?path=utterblue%2Fxiaomusic&label=total%20visitor&countColor=%232ccce4&style=flat)](https://visitorbadge.io/status?path=utterblue%2Fxiaomusic)
 
 ---
 
@@ -24,16 +24,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hanxi/xiaomusic">🏠 GitHub</a> •
+  <a href="https://github.com/utterblue/xiaomusic">🏠 GitHub</a> •
   <a href="https://xdocs.hanxi.cc/">📖 文档</a> •
-  <a href="https://github.com/hanxi/xiaomusic/issues/99">💬 FAQ</a> •
+  <a href="https://github.com/utterblue/xiaomusic/issues">💬 FAQ</a> •
   <a href="#-讨论区">💭 讨论区</a>
 </p>
 
 ---
 
 > [!TIP]
-> **新手指南**：初次安装遇到问题请查阅 [💬 FAQ问题集合](https://github.com/hanxi/xiaomusic/issues/99)，一般遇到的问题都已经有解决办法。
+> **新手指南**：初次安装遇到问题请查阅 [💬 FAQ问题集合](https://github.com/utterblue/xiaomusic/issues)，一般遇到的问题都已经有解决办法。
 
 ## 👋 快速入门指南
 
@@ -306,7 +306,7 @@ docker build -t xiaomusic .
 ### 📢 讨论区
 
 <p align="center">
-  <a href="https://github.com/hanxi/xiaomusic/issues">💬 GitHub Issues</a> •
+  <a href="https://github.com/utterblue/xiaomusic/issues">💬 GitHub Issues</a> •
   <a href="https://pd.qq.com/s/e2jybz0ss">🎮 QQ频道</a> •
   <a href="https://qm.qq.com/q/vQtFRinceA">👥 QQ交流群</a> •
   <a href="https://github.com/hanxi/xiaomusic/issues/86">💬 微信群</a>
@@ -316,7 +316,7 @@ docker build -t xiaomusic .
 
 我们欢迎所有形式的贡献，包括但不限于：
 
-- 🐛 **报告 Bug**：在 [Issues](https://github.com/hanxi/xiaomusic/issues) 中提交问题
+- 🐛 **报告 Bug**：在 [Issues](https://github.com/utterblue/xiaomusic/issues) 中提交问题
 - 💡 **功能建议**：分享你的想法和建议
 - 📝 **改进文档**：帮助完善文档和教程
 - 🎨 **前端美化**：优化 Web 控制台界面
@@ -379,7 +379,7 @@ docker build -t xiaomusic .
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=hanxi/xiaomusic&type=Date)](https://star-history.com/#hanxi/xiaomusic&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=utterblue/xiaomusic&type=Date)](https://star-history.com/#utterblue/xiaomusic&Date)
 
 ## License
 
