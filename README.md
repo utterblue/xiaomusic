@@ -42,7 +42,7 @@
 ```yaml
 services:
   xiaomusic:
-    image: hanxi/xiaomusic
+    image: utterblueme/xiaomusic:latest
     container_name: xiaomusic
     restart: always
     ports:
@@ -52,53 +52,14 @@ services:
       - /xiaomusic_conf:/app/conf
 ```
 
-🔥 国内：
 
-```yaml
-services:
-  xiaomusic:
-    image: docker.hanxi.cc/hanxi/xiaomusic
-    container_name: xiaomusic
-    restart: always
-    ports:
-      - 58090:8090
-    volumes:
-      - /xiaomusic_music:/app/music
-      - /xiaomusic_conf:/app/conf
-```
-
-测试版：
-
-```yaml
-services:
-  xiaomusic:
-    image: hanxi/xiaomusic:main
-    container_name: xiaomusic
-    restart: always
-    ports:
-      - 58090:8090
-    volumes:
-      - /xiaomusic_music:/app/music
-      - /xiaomusic_conf:/app/conf
-```
 
 对应的 docker 启动命令如下:
 
 ```bash
-docker run -p 58090:8090 -v /xiaomusic_music:/app/music -v /xiaomusic_conf:/app/conf hanxi/xiaomusic
+docker run -p 58090:8090 -v /xiaomusic_music:/app/music -v /xiaomusic_conf:/app/conf utterblueme/xiaomusic
 ```
 
-🔥 国内：
-
-```bash
-docker run -p 58090:8090 -v /xiaomusic_music:/app/music -v /xiaomusic_conf:/app/conf docker.hanxi.cc/hanxi/xiaomusic
-```
-
-测试版：
-
-```
-docker run -p 58090:8090 -v /xiaomusic_music:/app/music -v /xiaomusic_conf:/app/conf hanxi/xiaomusic:main
-```
 
 - 其中 conf 目录为配置文件存放目录，music 目录为音乐存放目录，建议分开配置为不同的目录。
 - /xiaomusic_music 和 /xiaomusic_conf 是 docker 所在的主机的目录，可以修改为其他目录。如果报错找不到 /xiaomusic_music 目录，可以先执行 `mkdir -p /xiaomusic_{music,conf}` 命令新建目录。
