@@ -2546,66 +2546,77 @@ class JSPluginManager:
 
     # 启用插件
     def enable_plugin(self, plugin_name: str) -> bool:
-        if plugin_name in self.plugins:
-            self.plugins[plugin_name]["enabled"] = True
-            # 读取、修改 插件配置json文件：① 将plugins_info属性中对于的插件状态改为禁用、2：将 enabled_plugins中对应插件移除
-            # 同步更新配置文件
-            try:
-                # 使用自定义的配置文件路径
-                config_file_path = self.plugins_config_path
+        """启用插件：以配置文件为准，不依赖运行时加载状态。
 
-                # 读取现有配置
-                if os.path.exists(config_file_path):
-                    with open(config_file_path, encoding="utf-8") as f:
-                        config_data = json.load(f)
+        旧实现要求 plugin_name 已在 self.plugins 运行时表中才允许启用，
+        但插件未被启用时恰恰不在该表中，导致「启用」永远失败。
+        这里改为按配置文件/插件文件判断，写回配置后再 reload 同步运行时。
+        """
+        config_file_path = self.plugins_config_path
+        plugin_file = os.path.join(self.plugins_dir, f"{plugin_name}.js")
+        if not os.path.exists(config_file_path) or not os.path.exists(plugin_file):
+            self.log.error(
+                f"Plugin not found when enabling {plugin_name}: config={config_file_path}, file={plugin_file}"
+            )
+            return False
+        try:
+            with open(config_file_path, encoding="utf-8") as f:
+                config_data = json.load(f)
 
-                    # 确保 music_free_info 存在
-                    if "music_free_info" not in config_data:
-                        config_data["music_free_info"] = {}
-                    music_free_info = config_data["music_free_info"]
+            music_free_info = config_data.setdefault("music_free_info", {})
+            plugins_info = music_free_info.setdefault("plugins_info", [])
 
-                    # 更新plugins_info中对应插件的状态
-                    plugins_info = music_free_info.get("plugins_info", [])
-                    for plugin_info in plugins_info:
-                        if plugin_info.get("name") == plugin_name:
-                            plugin_info["enabled"] = True
-
-                    # 添加到enabled_plugins中（如果不存在）
-                    if "enabled_plugins" not in music_free_info:
-                        music_free_info["enabled_plugins"] = []
-
-                    if plugin_name not in music_free_info["enabled_plugins"]:
-                        # 追加到list的第一个
-                        music_free_info["enabled_plugins"].insert(0, plugin_name)
-
-                    # 更新回 config_data
-                    config_data["music_free_info"] = music_free_info
-
-                    # 写回配置文件
-                    with open(config_file_path, "w", encoding="utf-8") as f:
-                        json.dump(config_data, f, ensure_ascii=False, indent=2)
-
-                    # 清空缓存：
-                    self._invalidate_config_cache()
-                    self.log.info(
-                        f"Plugin config updated for enabled plugin {plugin_name}"
-                    )
-                    # 更新插件引擎
-                    self.reload_plugins()
-
-            except Exception as e:
-                self.log.error(
-                    f"Failed to update plugin config when enabling {plugin_name}: {e}"
+            # 更新 plugins_info 中对应插件状态；缺失时按文件名补一条
+            found = False
+            for plugin_info in plugins_info:
+                if plugin_info.get("name") == plugin_name:
+                    plugin_info["enabled"] = True
+                    found = True
+            if not found:
+                plugins_info.append(
+                    {
+                        "name": plugin_name,
+                        "file": f"{plugin_name}.js",
+                        "version": "",
+                        "enabled": True,
+                    }
                 )
+
+            enabled_plugins = music_free_info.setdefault("enabled_plugins", [])
+            if plugin_name not in enabled_plugins:
+                enabled_plugins.insert(0, plugin_name)
+
+            config_data["music_free_info"] = music_free_info
+            with open(config_file_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+
+            self._invalidate_config_cache()
+            # 同步运行时状态（容错：reload 失败不应让「已写入配置」的操作报失败）
+            self.plugins[plugin_name] = self.plugins.get(plugin_name) or {
+                "name": plugin_name,
+                "enabled": True,
+            }
+            self.plugins[plugin_name]["enabled"] = True
+            try:
+                self.reload_plugins()
+            except Exception as reload_err:
+                self.log.error(
+                    f"Reload plugins failed after enabling {plugin_name}: {reload_err}"
+                )
+            self.log.info(f"Plugin config updated for enabled plugin {plugin_name}")
             return True
-        return False
+        except Exception as e:
+            self.log.error(
+                f"Failed to update plugin config when enabling {plugin_name}: {e}"
+            )
+            return False
 
     # 禁用插件
     def disable_plugin(self, plugin_name: str) -> bool:
         # 读取、修改 插件配置json文件：① 将plugins_info属性中对于的插件状态改为禁用、2：将 enabled_plugins中对应插件移除
         if plugin_name in self.plugins:
             self.plugins[plugin_name]["enabled"] = False
-        # 同步更新配置文件
+        # 同步更新配置文件（不依赖插件是否已在运行时表中）
         try:
             # 使用自定义的配置文件路径
             config_file_path = self.plugins_config_path
@@ -2654,65 +2665,76 @@ class JSPluginManager:
 
     # 卸载插件
     def uninstall_plugin(self, plugin_name: str) -> bool:
-        """卸载插件：移除配置信息并删除插件文件"""
-        if plugin_name in self.plugins:
+        """卸载插件：移除配置信息并删除插件文件。
+
+        旧实现把整个逻辑包在 `if plugin_name in self.plugins` 里，
+        但运行时表为空时（插件从未加载/引擎重载后）卸载永远失败。
+        这里改为按配置文件/插件文件判断，不依赖运行时加载状态。
+        """
+        config_file_path = self.plugins_config_path
+        plugin_file_path = os.path.join(self.plugins_dir, f"{plugin_name}.js")
+        # 只要配置或文件任一处存在该插件，就允许卸载（容忍另一处缺失）
+        config_has_plugin = False
+        if os.path.exists(config_file_path):
             try:
-                # 从内存中移除插件
-                self.plugins.pop(plugin_name)
-
-                # 使用自定义的配置文件路径
-                config_file_path = self.plugins_config_path
-
-                # 读取现有配置
-                if os.path.exists(config_file_path):
-                    with open(config_file_path, encoding="utf-8") as f:
-                        config_data = json.load(f)
-
-                    # 确保 music_free_info 存在
-                    if "music_free_info" not in config_data:
-                        config_data["music_free_info"] = {}
-                    music_free_info = config_data["music_free_info"]
-
-                    # 移除plugins_info属性中对应的插件项目
-                    if "plugins_info" in music_free_info:
-                        music_free_info["plugins_info"] = [
-                            plugin_info
-                            for plugin_info in music_free_info["plugins_info"]
-                            if plugin_info.get("name") != plugin_name
-                        ]
-
-                    # 从enabled_plugins中移除插件（如果存在）
-                    if (
-                        "enabled_plugins" in music_free_info
-                        and plugin_name in music_free_info["enabled_plugins"]
-                    ):
-                        music_free_info["enabled_plugins"].remove(plugin_name)
-
-                    # 更新回 config_data
-                    config_data["music_free_info"] = music_free_info
-
-                    # 回写配置文件
-                    with open(config_file_path, "w", encoding="utf-8") as f:
-                        json.dump(config_data, f, ensure_ascii=False, indent=2)
-                    # 清空缓存：
-                    self._invalidate_config_cache()
-                    self.log.info(
-                        f"Plugin config updated for uninstalled plugin {plugin_name}"
-                    )
-
-                # 删除插件文件夹中的指定插件文件
-                plugin_file_path = os.path.join(self.plugins_dir, f"{plugin_name}.js")
-                if os.path.exists(plugin_file_path):
-                    os.remove(plugin_file_path)
-                    self.log.info(f"Plugin file removed: {plugin_file_path}")
-                else:
-                    self.log.warning(f"Plugin file not found: {plugin_file_path}")
-
-                return True
+                with open(config_file_path, encoding="utf-8") as f:
+                    _cfg = json.load(f)
+                _mfi = _cfg.get("music_free_info", {})
+                config_has_plugin = any(
+                    pi.get("name") == plugin_name
+                    for pi in _mfi.get("plugins_info", [])
+                ) or plugin_name in _mfi.get("enabled_plugins", [])
             except Exception as e:
-                self.log.error(f"Failed to uninstall plugin {plugin_name}: {e}")
-                return False
-        return False
+                self.log.error(f"Failed to inspect config for {plugin_name}: {e}")
+        if not config_has_plugin and not os.path.exists(plugin_file_path):
+            self.log.error(f"Plugin not found when uninstalling {plugin_name}")
+            return False
+
+        try:
+            # 从运行时内存移除（容错：不在表里也要能卸载）
+            self.plugins.pop(plugin_name, None)
+
+            # 读取并更新配置
+            if os.path.exists(config_file_path):
+                with open(config_file_path, encoding="utf-8") as f:
+                    config_data = json.load(f)
+
+                music_free_info = config_data.setdefault("music_free_info", {})
+                music_free_info["plugins_info"] = [
+                    pi
+                    for pi in music_free_info.get("plugins_info", [])
+                    if pi.get("name") != plugin_name
+                ]
+                enabled_plugins = music_free_info.get("enabled_plugins", [])
+                if plugin_name in enabled_plugins:
+                    enabled_plugins.remove(plugin_name)
+
+                config_data["music_free_info"] = music_free_info
+                with open(config_file_path, "w", encoding="utf-8") as f:
+                    json.dump(config_data, f, ensure_ascii=False, indent=2)
+                self._invalidate_config_cache()
+                self.log.info(
+                    f"Plugin config updated for uninstalled plugin {plugin_name}"
+                )
+
+            # 删除插件文件
+            if os.path.exists(plugin_file_path):
+                os.remove(plugin_file_path)
+                self.log.info(f"Plugin file removed: {plugin_file_path}")
+            else:
+                self.log.warning(f"Plugin file not found: {plugin_file_path}")
+
+            # 同步运行时状态（容错）
+            try:
+                self.reload_plugins()
+            except Exception as reload_err:
+                self.log.error(
+                    f"Reload plugins failed after uninstalling {plugin_name}: {reload_err}"
+                )
+            return True
+        except Exception as e:
+            self.log.error(f"Failed to uninstall plugin {plugin_name}: {e}")
+            return False
 
     def reload_plugins(self):
         """重新加载所有插件"""

@@ -72,7 +72,12 @@ def enable_js_plugin(plugin_name: str):
             return {"success": False, "error": "JS Plugin Manager not available"}
 
         success = xiaomusic.js_plugin_manager.enable_plugin(plugin_name)
-        return {"success": success}
+        if success:
+            return {"success": True}
+        return {
+            "success": False,
+            "error": f"插件 {plugin_name} 不存在或启用失败，请检查插件文件与配置",
+        }
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -89,7 +94,9 @@ def disable_js_plugin(plugin_name: str):
             return {"success": False, "error": "JS Plugin Manager not available"}
 
         success = xiaomusic.js_plugin_manager.disable_plugin(plugin_name)
-        return {"success": success}
+        if success:
+            return {"success": True}
+        return {"success": False, "error": f"插件 {plugin_name} 禁用失败"}
 
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -106,7 +113,12 @@ def uninstall_js_plugin(plugin_name: str):
             return {"success": False, "error": "JS Plugin Manager not available"}
 
         success = xiaomusic.js_plugin_manager.uninstall_plugin(plugin_name)
-        return {"success": success}
+        if success:
+            return {"success": True}
+        return {
+            "success": False,
+            "error": f"插件 {plugin_name} 不存在或卸载失败，请检查插件是否已加载",
+        }
 
     except Exception as e:
         return {"success": False, "error": str(e)}
