@@ -2744,7 +2744,12 @@ class JSPluginManager:
         """
         config_file_path = self.plugins_config_path
         if not os.path.exists(config_file_path):
-            return {"success": False, "error": "插件配置文件不存在", "removed": [], "count": 0}
+            return {
+                "success": False,
+                "error": "插件配置文件不存在",
+                "removed": [],
+                "count": 0,
+            }
         try:
             with open(config_file_path, encoding="utf-8") as f:
                 config_data = json.load(f)
@@ -2766,7 +2771,9 @@ class JSPluginManager:
             kept = [pi for pi in plugins_info if pi.get("name") not in to_remove]
             music_free_info["plugins_info"] = kept
             music_free_info["enabled_plugins"] = [
-                n for n in music_free_info.get("enabled_plugins", []) if n not in to_remove
+                n
+                for n in music_free_info.get("enabled_plugins", [])
+                if n not in to_remove
             ]
             config_data["music_free_info"] = music_free_info
             with open(config_file_path, "w", encoding="utf-8") as f:
@@ -2789,7 +2796,9 @@ class JSPluginManager:
             try:
                 self.reload_plugins()
             except Exception as reload_err:
-                self.log.error(f"Reload plugins failed after batch uninstall: {reload_err}")
+                self.log.error(
+                    f"Reload plugins failed after batch uninstall: {reload_err}"
+                )
 
             self.log.info(f"Batch uninstalled disabled plugins: {removed}")
             return {"success": True, "removed": removed, "count": len(removed)}

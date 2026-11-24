@@ -27,7 +27,9 @@ def _make_manager(tmp_path, monkeypatch, plugins):
 
     os.makedirs(mgr.plugins_dir, exist_ok=True)
     for name, _enabled in plugins:
-        with open(os.path.join(mgr.plugins_dir, f"{name}.js"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(mgr.plugins_dir, f"{name}.js"), "w", encoding="utf-8"
+        ) as f:
             f.write("module.exports = {};")
 
     config = {
@@ -102,7 +104,9 @@ def test_batch_delete_none_disabled(tmp_path, monkeypatch):
 
 def test_batch_delete_cleans_stale_enabled_entry(tmp_path, monkeypatch):
     """enabled_plugins 里残留的禁用项（状态不一致）也应被清理，禁止误删启用项。"""
-    mgr = _make_manager(tmp_path, monkeypatch, [("enabled_one", True), ("stale", False)])
+    mgr = _make_manager(
+        tmp_path, monkeypatch, [("enabled_one", True), ("stale", False)]
+    )
     # 模拟历史遗留状态：stale 既标记 enabled=False，又残留在 enabled_plugins 中
     cfg = _cfg(mgr)
     cfg["enabled_plugins"].append("stale")

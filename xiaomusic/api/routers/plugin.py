@@ -132,7 +132,11 @@ def uninstall_all_disabled_js_plugins():
             not hasattr(xiaomusic, "js_plugin_manager")
             or not xiaomusic.js_plugin_manager
         ):
-            return {"success": False, "error": "JS Plugin Manager not available", "count": 0}
+            return {
+                "success": False,
+                "error": "JS Plugin Manager not available",
+                "count": 0,
+            }
 
         return xiaomusic.js_plugin_manager.uninstall_all_disabled_plugins()
 
