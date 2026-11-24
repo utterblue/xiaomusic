@@ -1,3 +1,23 @@
+## v0.6.6 (2026-11-24)
+
+### Fix
+
+- 修复 MusicFree 插件源订阅地址校验：旧正则不允许路径中出现冒号，导致带网页代理前缀的
+  地址（如 `https://gh.padao.fun/https://xxx/main.json`）被误判为无效。改用原生 URL 解析校验，
+  只要求协议为 http/https 且主机合法，代理格式地址可正常保存
+- 批量删除逻辑与前端显示对齐：以 `plugins_info.enabled` 为唯一判定依据，避免历史残留的
+  `enabled_plugins` 项导致「显示未启用却删不掉」
+
+### Feature
+
+- MusicFree 后台配置页新增「全部删除未启用」按钮：一键删除所有未启用的插件（已启用的保留），
+  对应新增后端接口 `DELETE /api/js-plugins/uninstall-disabled-all`
+
+### Build
+
+- CI 不再编译 arm 平台镜像（arm64 / armv7），仅构建推送 amd64，大幅缩短构建时间；
+  同时移除不再需要的 QEMU 步骤
+
 ## v0.6.5 (2026-11-24)
 
 ### Fix

@@ -124,6 +124,22 @@ def uninstall_js_plugin(plugin_name: str):
         return {"success": False, "error": str(e)}
 
 
+@router.delete("/api/js-plugins/uninstall-disabled-all")
+def uninstall_all_disabled_js_plugins():
+    """一键删除所有未启用的插件（保留已启用的插件）"""
+    try:
+        if (
+            not hasattr(xiaomusic, "js_plugin_manager")
+            or not xiaomusic.js_plugin_manager
+        ):
+            return {"success": False, "error": "JS Plugin Manager not available", "count": 0}
+
+        return xiaomusic.js_plugin_manager.uninstall_all_disabled_plugins()
+
+    except Exception as e:
+        return {"success": False, "error": str(e), "count": 0}
+
+
 @router.post("/api/js-plugins/upload")
 async def upload_js_plugin(file: UploadFile = File(...)):
     """上传 JS 插件"""

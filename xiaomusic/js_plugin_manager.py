@@ -2735,6 +2735,68 @@ class JSPluginManager:
             self.log.error(f"Failed to uninstall plugin {plugin_name}: {e}")
             return False
 
+    def uninstall_all_disabled_plugins(self) -> dict[str, Any]:
+        """一键删除所有未启用的插件（保留已启用的插件）。
+
+        以配置文件中的 plugins_info.enabled 为准判断启用状态；
+        只删除明确 enabled=False 的插件，避免误删已启用项。
+        一次性完成配置回写与文件删除，最后只 reload 一次引擎。
+        """
+        config_file_path = self.plugins_config_path
+        if not os.path.exists(config_file_path):
+            return {"success": False, "error": "插件配置文件不存在", "removed": [], "count": 0}
+        try:
+            with open(config_file_path, encoding="utf-8") as f:
+                config_data = json.load(f)
+
+            music_free_info = config_data.setdefault("music_free_info", {})
+            plugins_info = music_free_info.get("plugins_info", [])
+
+            # 未被启用的插件：以 plugins_info.enabled 为准，与前端列表显示保持一致；
+            # 即便 enabled_plugins 中有历史残留，也按 enabled=False 判定为未启用。
+            to_remove = [
+                pi.get("name")
+                for pi in plugins_info
+                if pi.get("name") and not pi.get("enabled", False)
+            ]
+            if not to_remove:
+                return {"success": True, "removed": [], "count": 0}
+
+            # 保留启用项；同时清理 enabled_plugins 中任何残留的待删名字（防御性）
+            kept = [pi for pi in plugins_info if pi.get("name") not in to_remove]
+            music_free_info["plugins_info"] = kept
+            music_free_info["enabled_plugins"] = [
+                n for n in music_free_info.get("enabled_plugins", []) if n not in to_remove
+            ]
+            config_data["music_free_info"] = music_free_info
+            with open(config_file_path, "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=2)
+            self._invalidate_config_cache()
+
+            # 删除对应文件与运行时状态
+            removed = []
+            for name in to_remove:
+                self.plugins.pop(name, None)
+                plugin_file = os.path.join(self.plugins_dir, f"{name}.js")
+                try:
+                    if os.path.exists(plugin_file):
+                        os.remove(plugin_file)
+                    removed.append(name)
+                except Exception as file_err:
+                    self.log.error(f"Failed to remove plugin file {name}: {file_err}")
+
+            # 同步运行时（容错）
+            try:
+                self.reload_plugins()
+            except Exception as reload_err:
+                self.log.error(f"Reload plugins failed after batch uninstall: {reload_err}")
+
+            self.log.info(f"Batch uninstalled disabled plugins: {removed}")
+            return {"success": True, "removed": removed, "count": len(removed)}
+        except Exception as e:
+            self.log.error(f"Failed to batch uninstall disabled plugins: {e}")
+            return {"success": False, "error": str(e), "removed": [], "count": 0}
+
     def reload_plugins(self):
         """重新加载所有插件"""
         self.log.info("Reloading all plugins...")

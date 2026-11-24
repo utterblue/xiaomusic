@@ -73,10 +73,25 @@ function editPluginSource() {
     }
 
     // 校验 URL 格式
-    const urlPattern = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
-    if (urlPattern.test(newUrl)) {
-        // 更新地址
-        updatePluginSource(newUrl);
+    // 允许带网页代理前缀的地址，例如 https://proxy.example.com/https://raw.githubusercontent.com/x/main.json
+    // 这类 URL 的路径中包含 ":" 和 "//"，旧正则不允许冒号导致误判为无效。
+    // 用原生 URL 解析做校验：要求协议为 http/https 且主机非空；同时兼容省略协议的历史写法。
+    let normalizedUrl = newUrl.trim();
+    if (!/^https?:\/\//i.test(normalizedUrl)) {
+        normalizedUrl = 'https://' + normalizedUrl;
+    }
+    let isValid = false;
+    try {
+        const parsed = new URL(normalizedUrl);
+        isValid = ['http:', 'https:'].includes(parsed.protocol) &&
+            !!parsed.hostname &&
+            parsed.hostname.includes('.');
+    } catch (e) {
+        isValid = false;
+    }
+    if (isValid) {
+        // 更新地址（保留用户原始输入，不改写代理前缀）
+        updatePluginSource(newUrl.trim());
     } else {
         alert('请输入有效的插件源地址！');
     }
@@ -262,6 +277,32 @@ async function uninstallPlugin(pluginName) {
         }
     } catch (error) {
         alert(`插件卸载出错：${error.message}`);
+    }
+}
+
+// 一键删除所有未启用的插件
+async function uninstallAllDisabledPlugins() {
+    if (!confirm('确定要删除所有【未启用】的插件吗？已启用的插件会被保留，此操作不可恢复。')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/js-plugins/uninstall-disabled-all', {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            const count = data.count || 0;
+            alert(count > 0
+                ? `已删除 ${count} 个未启用的插件`
+                : '没有未启用的插件需要删除');
+            await loadPlugins();
+        } else {
+            alert(`批量删除失败：${data.error || '未知错误'}`);
+        }
+    } catch (error) {
+        alert(`批量删除出错：${error.message}`);
     }
 }
 
